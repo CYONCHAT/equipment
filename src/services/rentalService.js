@@ -163,7 +163,7 @@ const checkOut = async (sessionId, payload, context, idempotencyKey) => {
     billingResult = await billing.createOverage({ payload: { ...billingPayload, event: eventEnvelope({ eventType: 'equipment.rental.overage.created', payload: billingPayload, context, idempotencyKey: billingIdempotencyKey }) }, context, idempotencyKey: billingIdempotencyKey });
     try {
       const payIdempotencyKey = `equipment:pay:${session.id}`;
-      const payPayload = { tenantId, organizationId: session.organizationId, sourceSystem: 'equipment', sourceId: session.id, billingItemId: billingResult.id || billingResult.data?.id, amountCents: overageAmountCents, currency: contract.currency, mode: contract.mode };
+      const payPayload = { tenantId, organizationId: session.organizationId, sourceSystem: 'equipment', sourceId: session.id, billingItemId: billingResult.id || billingResult.data?.id, title: `Excedente de locação do equipamento ${asset.serialNumber}`, amountCents: overageAmountCents, currency: contract.currency, mode: contract.mode, referenceId: payIdempotencyKey };
       payResult = await pay.collectOverage({ payload: { ...payPayload, event: eventEnvelope({ eventType: 'equipment.rental.overage.payment_requested', payload: payPayload, context, idempotencyKey: payIdempotencyKey }) }, context, idempotencyKey: payIdempotencyKey });
     } catch (error) {
       payResult = { status: 'PENDING', errorCode: error.code, errorMessage: error.message };

@@ -55,9 +55,25 @@ const billing = {
 };
 
 const pay = {
+  async resolveEstablishment({ context }) {
+    if (env.integration.mode === 'mock') return { id: 'mock-establishment' };
+    const result = unwrap(await fetchJson(env.integration.payUrl, '/api/establishments', { method: 'GET', context }));
+    const establishments = Array.isArray(result) ? result : result?.data || [];
+    const establishment = establishments[0];
+    if (!establishment?.id) throw new Error('Nenhum estabelecimento Paytime configurado para o tenant');
+    return establishment;
+  },
+
   async collectOverage({ payload, context, idempotencyKey }) {
     if (env.integration.mode === 'mock') return { id: `pay-${mockId()}`, status: 'AUTHORIZED', mock: true };
-    return unwrap(await fetchJson(env.integration.payUrl, process.env.PAY_OVERAGE_PATH || '/api/establishment-checkouts', { method: 'POST', body: payload, context, idempotencyKey }));
+    const establishmentId = payload.establishmentId || context?.establishmentId || (await this.resolveEstablishment({ context })).id;
+    const referenceId = payload.referenceId || idempotencyKey || `equipment:pay:${payload.sourceId}`;
+    const checkoutPayload = {
+      title: payload.title || payload.description || 'Excedente de locação',
+      amount: payload.amount ?? Number((Number(payload.amountCents || 0) / 100).toFixed(2)),
+      reference_id: referenceId,
+    };
+    return unwrap(await fetchJson(env.integration.payUrl, process.env.PAY_OVERAGE_PATH || `/api/establishments/${establishmentId}/checkout`, { method: 'POST', body: checkoutPayload, context, idempotencyKey: referenceId }));
   },
 };
 
