@@ -1,5 +1,6 @@
 const env = require('../config/env');
 const { AppError } = require('../utils/errors');
+const { buildIntegrationContext } = require('../utils/integrationContext');
 
 const serviceKey = env.integration.serviceKey;
 
@@ -12,18 +13,24 @@ const headersFor = (context = {}, idempotencyKey) => {
   if (context.tenantId) headers['X-Tenant-Id'] = context.tenantId;
   if (context.organizationId) headers['X-Organization-Id'] = context.organizationId;
   if (context.requestId) headers['X-Request-Id'] = context.requestId;
-  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+  if (context.correlationId) headers['X-Correlation-Id'] = context.correlationId;
+  if (context.sourceSystem) headers['X-Source-System'] = context.sourceSystem;
+  if (context.eventId) headers['X-Event-Id'] = context.eventId;
+  if (idempotencyKey || context.idempotencyKey) {
+    headers['Idempotency-Key'] = idempotencyKey || context.idempotencyKey;
+  }
   return headers;
 };
 
 const fetchJson = async (baseUrl, path, { method = 'GET', body, context, idempotencyKey } = {}) => {
   if (env.integration.mode === 'mock') return { success: true, data: { mock: true } };
+  const integrationContext = buildIntegrationContext(context, { sourceSystem: context?.sourceSystem || 'equipment', idempotencyKey });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), env.integration.requestTimeoutMs);
   try {
     const response = await fetch(`${String(baseUrl).replace(/\/$/, '')}${path}`, {
       method,
-      headers: headersFor(context, idempotencyKey),
+      headers: headersFor(integrationContext, idempotencyKey),
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });

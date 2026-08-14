@@ -5,6 +5,7 @@ const { sequelize, EquipmentAsset, RentalContract, EquipmentReservation, RentalS
 const { entitlements, agend, billing, pay } = require('./integrationServices');
 const { findByQr, assertAvailable } = require('./assetService');
 const { tenantFrom, serialize, minutesBetween, roundUp } = require('./domainUtils');
+const { eventEnvelope } = require('../utils/integrationContext');
 const { ConflictError, NotFoundError, ValidationError } = require('../utils/errors');
 
 const getContract = async (id, tenantId) => {
@@ -49,6 +50,9 @@ const createReservation = async (payload, context, idempotencyKey) => {
   await getContract(payload.contractId, tenantId);
   const asset = await EquipmentAsset.findOne({ where: { id: payload.assetId, tenantId } });
   if (!asset) throw new NotFoundError('Equipamento não encontrado', 'ASSET_NOT_FOUND');
+  if (env.integration.mode !== 'mock' && !payload.agendReservationId) {
+    throw new ValidationError('A reserva oficial do Agend é obrigatória para reservar o equipamento.', 'AGEND_RESERVATION_REQUIRED');
+  }
   if (payload.agendReservationId) {
     const appointment = await agend.getReservation(payload.agendReservationId, { ...context });
     if (['CANCELLED', 'COMPLETED', 'EXPIRED'].includes(String(appointment.status || '').toUpperCase())) throw new ConflictError('Reserva do Agend não está disponível', 'AGEND_RESERVATION_UNAVAILABLE');
@@ -85,11 +89,17 @@ const checkIn = async (payload, context, idempotencyKey) => {
     if (!['PENDING', 'CONFIRMED'].includes(reservation.status)) throw new ConflictError('Reserva não pode iniciar uma sessão', 'RESERVATION_NOT_AVAILABLE');
     if (reservation.assetId !== asset.id || reservation.contractId !== contract.id) throw new ConflictError('Reserva não corresponde ao equipamento ou contrato', 'RESERVATION_CONTEXT_MISMATCH');
   }
+  const appointmentId = reservation?.agendReservationId || null;
+  if (env.integration.mode !== 'mock' && !appointmentId) {
+    throw new ValidationError('A reserva oficial do Agend é obrigatória para iniciar a locação.', 'AGEND_RESERVATION_REQUIRED');
+  }
 
+  const reserveIdempotencyKey = `equipment:reserve:${idempotencyKey}`;
+  const reservePayload = { tenantId, organizationId: contract.organizationId, appointmentId, reason: `equipment rental check-in ${idempotencyKey}` };
   const reserveResult = await entitlements.reserve({
     entitlementId: contract.entitlementId,
-    payload: { tenantId, organizationId: contract.organizationId, appointmentId: reservation?.agendReservationId || null, reason: `equipment rental check-in ${idempotencyKey}` },
-    context, idempotencyKey: `equipment:reserve:${idempotencyKey}`,
+    payload: { ...reservePayload, event: eventEnvelope({ eventType: 'equipment.rental.credit.reserve', payload: reservePayload, context, idempotencyKey: reserveIdempotencyKey }) },
+    context, idempotencyKey: reserveIdempotencyKey,
   });
   const sessionId = crypto.randomUUID();
   try {
@@ -107,7 +117,9 @@ const checkIn = async (payload, context, idempotencyKey) => {
     });
     return serializeResult(session, { idempotent: false, entitlementMovementId: reserveResult.movement?.id || null });
   } catch (error) {
-    await entitlements.release({ entitlementId: contract.entitlementId, payload: { tenantId, organizationId: contract.organizationId, appointmentId: reservation?.agendReservationId || null, reason: `equipment check-in rollback ${sessionId}` }, context, idempotencyKey: `equipment:release:${sessionId}` }).catch(() => undefined);
+    const releaseIdempotencyKey = `equipment:release:${sessionId}`;
+    const releasePayload = { tenantId, organizationId: contract.organizationId, appointmentId: reservation?.agendReservationId || null, reason: `equipment check-in rollback ${sessionId}` };
+    await entitlements.release({ entitlementId: contract.entitlementId, payload: { ...releasePayload, event: eventEnvelope({ eventType: 'equipment.rental.credit.release', payload: releasePayload, context, idempotencyKey: releaseIdempotencyKey }) }, context, idempotencyKey: releaseIdempotencyKey }).catch(() => undefined);
     throw error;
   }
 };
@@ -122,24 +134,37 @@ const checkOut = async (sessionId, payload, context, idempotencyKey) => {
   if (payload.qrPublicToken && payload.qrPublicToken !== asset.qrPublicToken) throw new ConflictError('QR Code não corresponde ao equipamento da sessão', 'QR_ASSET_MISMATCH');
   const returnAt = payload.returnAt || new Date();
   if (returnAt < new Date(session.pickupCheckInAt)) throw new ValidationError('returnAt não pode ser anterior ao check-in');
+  const reservation = session.reservationId
+    ? await EquipmentReservation.findOne({ where: { id: session.reservationId, tenantId } })
+    : null;
+  const appointmentId = reservation?.agendReservationId || null;
+  if (env.integration.mode !== 'mock' && !appointmentId) {
+    throw new ValidationError('A sessão não possui a referência oficial do Agend.', 'AGEND_RESERVATION_REQUIRED');
+  }
   const usedMinutes = minutesBetween(session.pickupCheckInAt, returnAt);
   const availableIncluded = Math.max(contract.includedMinutes - contract.usedMinutes, 0);
   const includedMinutesUsed = Math.min(usedMinutes, availableIncluded);
   const overageMinutes = Math.max(usedMinutes - availableIncluded, 0);
   const billableOverageMinutes = roundUp(overageMinutes, env.rental.overtimeRoundingMinutes);
   const overageAmountCents = Math.ceil((billableOverageMinutes / 60) * contract.overtimeRateCents);
+  const consumeIdempotencyKey = `equipment:consume:${session.id}`;
+  const consumePayload = { tenantId, organizationId: session.organizationId, appointmentId, reason: `equipment rental check-out ${session.id}` };
   const consumeResult = await entitlements.consume({
     entitlementId: session.entitlementId,
-    payload: { tenantId, organizationId: session.organizationId, appointmentId: null, reason: `equipment rental check-out ${session.id}` },
-    context, idempotencyKey: `equipment:consume:${session.id}`,
+    payload: { ...consumePayload, event: eventEnvelope({ eventType: 'equipment.rental.credit.consume', payload: consumePayload, context, idempotencyKey: consumeIdempotencyKey }) },
+    context, idempotencyKey: consumeIdempotencyKey,
   });
 
   let billingResult = null;
   let payResult = null;
   if (overageAmountCents > 0) {
-    billingResult = await billing.createOverage({ payload: { tenantId, organizationId: session.organizationId, sourceSystem: 'equipment', sourceId: session.id, contractId: contract.id, description: `Excedente de locação do equipamento ${asset.serialNumber}`, quantity: billableOverageMinutes, unit: 'MINUTE', amountCents: overageAmountCents, currency: contract.currency, mode: contract.mode }, context, idempotencyKey: `equipment:billing:${session.id}` });
+    const billingIdempotencyKey = `equipment:billing:${session.id}`;
+    const billingPayload = { tenantId, organizationId: session.organizationId, sourceSystem: 'equipment', sourceId: session.id, contractId: contract.id, description: `Excedente de locação do equipamento ${asset.serialNumber}`, quantity: billableOverageMinutes, unit: 'MINUTE', amountCents: overageAmountCents, currency: contract.currency, mode: contract.mode };
+    billingResult = await billing.createOverage({ payload: { ...billingPayload, event: eventEnvelope({ eventType: 'equipment.rental.overage.created', payload: billingPayload, context, idempotencyKey: billingIdempotencyKey }) }, context, idempotencyKey: billingIdempotencyKey });
     try {
-      payResult = await pay.collectOverage({ payload: { tenantId, organizationId: session.organizationId, sourceSystem: 'equipment', sourceId: session.id, billingItemId: billingResult.id || billingResult.data?.id, amountCents: overageAmountCents, currency: contract.currency, mode: contract.mode }, context, idempotencyKey: `equipment:pay:${session.id}` });
+      const payIdempotencyKey = `equipment:pay:${session.id}`;
+      const payPayload = { tenantId, organizationId: session.organizationId, sourceSystem: 'equipment', sourceId: session.id, billingItemId: billingResult.id || billingResult.data?.id, amountCents: overageAmountCents, currency: contract.currency, mode: contract.mode };
+      payResult = await pay.collectOverage({ payload: { ...payPayload, event: eventEnvelope({ eventType: 'equipment.rental.overage.payment_requested', payload: payPayload, context, idempotencyKey: payIdempotencyKey }) }, context, idempotencyKey: payIdempotencyKey });
     } catch (error) {
       payResult = { status: 'PENDING', errorCode: error.code, errorMessage: error.message };
     }

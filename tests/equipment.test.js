@@ -52,14 +52,14 @@ test('cria contrato, reserva e faz check-in usando o QR Code', async () => {
   const contractResponse = await auth(request(app).post('/api/equipment/contracts')).send({ entitlementId, sourceSystem: 'catalog', sourceId: contractSourceId, mode: 'PREPAID', includedMinutes: 60, maxSessions: 3, overtimeRateCents: 1200, validFrom: '2026-08-14T00:00:00.000Z' });
   expect(contractResponse.status).toBe(201);
   contract = contractResponse.body.data;
-  const reservationResponse = await auth(request(app).post('/api/equipment/reservations')).set('Idempotency-Key', 'reservation-001').send({ contractId: contract.id, assetId: asset.id, collectionPointId: 'PONTO-01', scheduledStart: '2026-08-14T10:00:00.000Z', scheduledEnd: '2026-08-14T12:00:00.000Z' });
+  const reservationResponse = await auth(request(app).post('/api/equipment/reservations')).set('Idempotency-Key', 'reservation-001').send({ contractId: contract.id, assetId: asset.id, agendReservationId: '55555555-5555-4555-8555-555555555555', collectionPointId: 'PONTO-01', scheduledStart: '2026-08-14T10:00:00.000Z', scheduledEnd: '2026-08-14T12:00:00.000Z' });
   expect(reservationResponse.status).toBe(201);
   reservation = reservationResponse.body.data;
-  const replay = await auth(request(app).post('/api/equipment/reservations')).set('Idempotency-Key', 'reservation-001').send({ contractId: contract.id, assetId: asset.id, collectionPointId: 'PONTO-01', scheduledStart: '2026-08-14T10:00:00.000Z', scheduledEnd: '2026-08-14T12:00:00.000Z' });
+  const replay = await auth(request(app).post('/api/equipment/reservations')).set('Idempotency-Key', 'reservation-001').send({ contractId: contract.id, assetId: asset.id, agendReservationId: '55555555-5555-4555-8555-555555555555', collectionPointId: 'PONTO-01', scheduledStart: '2026-08-14T10:00:00.000Z', scheduledEnd: '2026-08-14T12:00:00.000Z' });
   expect(replay.status).toBe(201);
   expect(replay.body.idempotent).toBe(true);
   expect(replay.body.data.id).toBe(reservation.id);
-  const conflict = await auth(request(app).post('/api/equipment/reservations')).set('Idempotency-Key', 'reservation-overlap').send({ contractId: contract.id, assetId: asset.id, collectionPointId: 'PONTO-01', scheduledStart: '2026-08-14T10:30:00.000Z', scheduledEnd: '2026-08-14T11:30:00.000Z' });
+  const conflict = await auth(request(app).post('/api/equipment/reservations')).set('Idempotency-Key', 'reservation-overlap').send({ contractId: contract.id, assetId: asset.id, agendReservationId: '66666666-6666-4666-8666-666666666666', collectionPointId: 'PONTO-01', scheduledStart: '2026-08-14T10:30:00.000Z', scheduledEnd: '2026-08-14T11:30:00.000Z' });
   expect(conflict.status).toBe(409);
   expect(conflict.body.error.code).toBe('ASSET_RESERVATION_CONFLICT');
   const checkInResponse = await auth(request(app).post('/api/equipment/sessions/check-in')).set('Idempotency-Key', 'checkin-001').send({ contractId: contract.id, reservationId: reservation.id, serialNumber: asset.serialNumber, qrPublicToken: asset.qrPublicToken, pickupAt: '2026-08-14T10:00:00.000Z', collectionPointId: 'PONTO-01' });

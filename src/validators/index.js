@@ -30,7 +30,7 @@ const contractCreateSchema = z.object({
 }).strict();
 
 const reservationCreateSchema = z.object({
-  tenantId: uuid.optional(), organizationId: nullableUuid, contractId: uuid, assetId: uuid, agendReservationId: z.string().trim().max(160).nullable().optional(),
+  tenantId: uuid.optional(), organizationId: nullableUuid, contractId: uuid, assetId: uuid, agendReservationId: z.string().trim().min(1).max(160),
   userId: nullableUuid, collectionPointId: z.string().trim().max(120).nullable().optional(), scheduledStart: date, scheduledEnd: date,
   status: z.enum(['PENDING', 'CONFIRMED']).default('CONFIRMED'), metadata: z.record(z.any()).optional(),
 }).strict().refine((value) => value.scheduledEnd > value.scheduledStart, { message: 'scheduledEnd deve ser posterior a scheduledStart', path: ['scheduledEnd'] });
