@@ -1,25 +1,20 @@
 const env = require('../config/env');
 const { AppError } = require('../utils/errors');
 const { buildIntegrationContext } = require('../utils/integrationContext');
+const { buildInternalHeaders } = require('../middlewares/communicationContext');
 
 const serviceKey = env.integration.serviceKey;
 
 const headersFor = (context = {}, idempotencyKey) => {
-  const headers = {
-    'Content-Type': 'application/json',
-    'X-Service-Key': serviceKey,
-  };
-  if (context.authorization) headers.Authorization = context.authorization;
-  if (context.tenantId) headers['X-Tenant-Id'] = context.tenantId;
-  if (context.organizationId) headers['X-Organization-Id'] = context.organizationId;
-  if (context.requestId) headers['X-Request-Id'] = context.requestId;
-  if (context.correlationId) headers['X-Correlation-Id'] = context.correlationId;
-  if (context.sourceSystem) headers['X-Source-System'] = context.sourceSystem;
-  if (context.eventId) headers['X-Event-Id'] = context.eventId;
-  if (idempotencyKey || context.idempotencyKey) {
-    headers['Idempotency-Key'] = idempotencyKey || context.idempotencyKey;
-  }
-  return headers;
+  return buildInternalHeaders({
+    context,
+    serviceId: process.env.SERVICE_NAME || 'operaon-equipment',
+    serviceKey,
+    accessToken: context.authorization,
+    idempotencyKey,
+    tenantId: context.tenantId,
+    organizationId: context.organizationId,
+  });
 };
 
 const fetchJson = async (baseUrl, path, { method = 'GET', body, context, idempotencyKey } = {}) => {

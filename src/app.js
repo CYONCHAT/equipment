@@ -8,7 +8,10 @@ const { authenticate } = require('./middlewares/auth');
 const { requestContext, authRateLimiter, errorHandler } = require('./middlewares/operational');
 const equipmentRoutes = require('./routes/equipmentRoutes');
 
+const { communicationContext } = require('./middlewares/communicationContext');
+
 const app = express();
+app.use(communicationContext);
 app.disable('x-powered-by');
 app.set('trust proxy', env.trustProxyHops);
 app.use(requestContext);
