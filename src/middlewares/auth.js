@@ -53,7 +53,6 @@ const authenticate = (req, _res, next) => {
 
 const hasPermission = (req, resource, action) => {
   const permissions = req.context?.permissions || [];
-  if (req.context?.isService) return true;
   return permissions.includes('*:*') || permissions.includes(`${resource}:${action}`) || permissions.includes(`${action}:${resource}`);
 };
 

@@ -1,5 +1,8 @@
 process.env.NODE_ENV = 'test';
+process.env.NODE_ENV = 'test';
 process.env.DB_NAME = 'operaon_equipment_test';
+process.env.JWT_AUDIENCE = 'operaon-equipment';
+process.env.JWT_ISSUER = 'operaon-identity';
 process.env.INTEGRATION_MODE = 'mock';
 
 const request = require('supertest');
@@ -14,7 +17,7 @@ const entitlementId = '33333333-3333-4333-8333-333333333333';
 const userId = '44444444-4444-4444-8444-444444444444';
 const contractSourceId = 'catalog-sale-equipment-001';
 
-const token = jwt.sign({ sub: userId, tenantId, organizationId, permissions: ['equipment:read', 'equipment:write', 'equipment:admin'], tokenType: 'access' }, env.jwt.secret, { algorithm: 'HS256', issuer: env.jwt.issuer, audience: 'operaon-api', expiresIn: '1h' });
+const token = jwt.sign({ sub: userId, tenantId, organizationId, permissions: ['equipment:read', 'equipment:write', 'equipment:admin'], tokenType: 'access' }, env.jwt.secret, { algorithm: 'HS256', issuer: env.jwt.issuer, audience: 'operaon-equipment', expiresIn: '1h' });
 const auth = (agent) => agent.set('X-Service-Key', env.serviceApiKey).set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', tenantId).set('X-Organization-Id', organizationId);
 
 let asset;
@@ -89,10 +92,22 @@ test('bloqueia ativo durante manutenção e libera após conclusão', async () =
   expect(assetResponse.body.data.status).toBe('OPERATIONAL');
 });
 
+test('rejeita token destinado a outra audience', async () => {
+  const wrongAudience = jwt.sign({ sub: userId, tenantId, permissions: ['equipment:read'] }, env.jwt.secret, { algorithm: 'HS256', issuer: env.jwt.issuer, audience: 'operaon-api', expiresIn: '1h' });
+  const response = await request(app).get('/api/equipment/assets').set('X-Service-Key', env.serviceApiKey).set('Authorization', `Bearer ${wrongAudience}`).set('X-Tenant-Id', tenantId);
+  expect(response.status).toBe(401);
+});
+
+test('não concede bypass universal a token de serviço', async () => {
+  const serviceToken = jwt.sign({ sub: userId, tenantId, permissions: [], service: true, tokenType: 'service' }, env.jwt.secret, { algorithm: 'HS256', issuer: env.jwt.issuer, audience: 'operaon-equipment', expiresIn: '1h' });
+  const response = await request(app).get('/api/equipment/assets').set('X-Service-Key', env.serviceApiKey).set('Authorization', `Bearer ${serviceToken}`).set('X-Tenant-Id', tenantId);
+  expect(response.status).toBe(403);
+});
+
 test('recusa acesso sem credencial dual ou permissão dinâmica', async () => {
   const missingServiceKey = await request(app).get('/api/equipment/assets').set('Authorization', `Bearer ${token}`).set('X-Tenant-Id', tenantId);
   expect(missingServiceKey.status).toBe(401);
-  const readOnly = jwt.sign({ sub: userId, tenantId, permissions: ['equipment:read'], tokenType: 'access' }, env.jwt.secret, { algorithm: 'HS256', issuer: env.jwt.issuer, audience: 'operaon-api', expiresIn: '1h' });
+  const readOnly = jwt.sign({ sub: userId, tenantId, permissions: ['equipment:read'], tokenType: 'access' }, env.jwt.secret, { algorithm: 'HS256', issuer: env.jwt.issuer, audience: 'operaon-equipment', expiresIn: '1h' });
   const denied = await request(app).post('/api/equipment/assets').set('X-Service-Key', env.serviceApiKey).set('Authorization', `Bearer ${readOnly}`).set('X-Tenant-Id', tenantId).send({ serialNumber: 'VEL-EQ-0002', name: 'Outra máquina' });
   expect(denied.status).toBe(403);
 });
