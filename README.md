@@ -90,3 +90,8 @@ NODE_ENV=production npm start
 ```
 
 Health checks: `GET /health` não exige autenticação; `GET /ready` testa a conexão com o banco. A aplicação encerra de forma controlada em `SIGTERM` e fecha o pool do Sequelize antes de finalizar.
+
+<!-- OPERAON-DOCUMENTATION-LINK -->
+## Documentação
+
+A documentação técnica padronizada está em [docs/INDEX.md](docs/INDEX.md). Ela inclui arquitetura, responsabilidades, segurança, contratos, operação, testes, runbooks e decisões.
