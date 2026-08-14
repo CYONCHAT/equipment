@@ -159,7 +159,7 @@ const checkOut = async (sessionId, payload, context, idempotencyKey) => {
   let payResult = null;
   if (overageAmountCents > 0) {
     const billingIdempotencyKey = `equipment:billing:${session.id}`;
-    const billingPayload = { tenantId, organizationId: session.organizationId, sourceSystem: 'equipment', sourceId: session.id, contractId: contract.id, description: `Excedente de locação do equipamento ${asset.serialNumber}`, quantity: billableOverageMinutes, unit: 'MINUTE', amountCents: overageAmountCents, currency: contract.currency, mode: contract.mode };
+    const billingPayload = { tenantId, organizationId: session.organizationId, patientId: contract.patientId, catalogItemId: contract.catalogItemId, sourceSystem: 'equipment', sourceId: session.id, contractId: contract.id, description: `Excedente de locação do equipamento ${asset.serialNumber}`, quantity: billableOverageMinutes, unit: 'MINUTE', amountCents: overageAmountCents, currency: contract.currency, mode: contract.mode };
     billingResult = await billing.createOverage({ payload: { ...billingPayload, event: eventEnvelope({ eventType: 'equipment.rental.overage.created', payload: billingPayload, context, idempotencyKey: billingIdempotencyKey }) }, context, idempotencyKey: billingIdempotencyKey });
     try {
       const payIdempotencyKey = `equipment:pay:${session.id}`;

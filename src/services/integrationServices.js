@@ -50,7 +50,7 @@ const agend = {
 const billing = {
   async createOverage({ payload, context, idempotencyKey }) {
     if (env.integration.mode === 'mock') return { id: `billing-${mockId()}`, status: 'PENDING', mock: true };
-    return unwrap(await fetchJson(env.integration.billingUrl, process.env.BILLING_USAGE_PATH || '/api/sales', { method: 'POST', body: payload, context, idempotencyKey }));
+    return unwrap(await fetchJson(env.integration.billingUrl, process.env.BILLING_USAGE_PATH || '/api/internal/usage-sales', { method: 'POST', body: payload, context, idempotencyKey }));
   },
 };
 
