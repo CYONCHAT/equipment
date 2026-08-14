@@ -1,4 +1,15 @@
-# Operaon Equipment & Maintenance
+# Equipment & Maintenance
+
+> Serviço de equipamentos da Operaon para locação, QR Code, check-in, check-out, uso e excedentes.
+
+| Item | Referência |
+|---|---|
+| Documentação | [docs/INDEX.md](docs/INDEX.md) |
+| Segurança | [SECURITY.md](SECURITY.md) |
+| Contribuição | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Processo de release | [docs/release-process.md](docs/release-process.md) |
+
+---
 
 Standalone responsável por ativos físicos, QR Code, locação por horas, retirada/devolução, inspeção e manutenção. O serviço possui banco próprio e foi desenhado para trabalhar com Catalog, Agend, Entitlements / Session Credits, Billing e Pay sem duplicar o ledger de créditos nem as faturas.
 

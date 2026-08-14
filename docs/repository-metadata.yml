@@ -1,0 +1,21 @@
+repository: equipment
+description: "Serviço de equipamentos da Operaon para locação, QR Code, check-in, check-out, uso e excedentes."
+homepage: "https://github.com/operaon/equipment"
+topics:
+  - operaon
+  - equipment-rental
+  - qr-code
+  - check-in
+  - check-out
+  - billing
+  - nodejs
+custom_properties:
+  domain_owner: equipment
+  repository_type: module
+  lifecycle: active
+  documentation: docs/INDEX.md
+  security_tier: standard
+  default_branch: main
+notes:
+  - "Homepage uses the repository URL until an official public product URL is defined."
+  - "Stars, watchers, forks and audit history are GitHub-managed metrics and are not programmable repository content."
