@@ -43,7 +43,8 @@ const catalog = {
 const agend = {
   async getReservation(id, { context }) {
     if (env.integration.mode === 'mock') return { id, status: 'CONFIRMED', mock: true };
-    return unwrap(await fetchJson(env.integration.agendUrl, `/api/appointments/${id}`, { context }));
+    const result = unwrap(await fetchJson(env.integration.agendUrl, `/api/appointments/${id}`, { method: 'GET', context }));
+    return result?.appointment || result;
   },
 };
 

@@ -53,18 +53,32 @@ const createReservation = async (payload, context, idempotencyKey) => {
   if (env.integration.mode !== 'mock' && !payload.agendReservationId) {
     throw new ValidationError('A reserva oficial do Agend é obrigatória para reservar o equipamento.', 'AGEND_RESERVATION_REQUIRED');
   }
+  let scheduledStart = payload.scheduledStart;
+  let scheduledEnd = payload.scheduledEnd;
   if (payload.agendReservationId) {
     const appointment = await agend.getReservation(payload.agendReservationId, { ...context });
     if (['CANCELLED', 'COMPLETED', 'EXPIRED'].includes(String(appointment.status || '').toUpperCase())) throw new ConflictError('Reserva do Agend não está disponível', 'AGEND_RESERVATION_UNAVAILABLE');
+    const officialStart = new Date(appointment.appointmentDate);
+    const officialDuration = Number(appointment.duration);
+    if (env.integration.mode !== 'mock' && (!appointment.appointmentDate || Number.isNaN(officialStart.getTime()) || !Number.isFinite(officialDuration) || officialDuration <= 0)) {
+      throw new ValidationError('A reserva do Agend não possui janela temporal válida.', 'AGEND_RESERVATION_TIME_INVALID');
+    }
+    if (!Number.isNaN(officialStart.getTime()) && Number.isFinite(officialDuration) && officialDuration > 0) {
+      scheduledStart = officialStart;
+      scheduledEnd = new Date(officialStart.getTime() + officialDuration * 60000);
+    }
   }
-  const overlap = await EquipmentReservation.findOne({ where: { tenantId, assetId: payload.assetId, status: { [Op.in]: ['PENDING', 'CONFIRMED'] }, scheduledStart: { [Op.lt]: payload.scheduledEnd }, scheduledEnd: { [Op.gt]: payload.scheduledStart } } });
+  if (!(scheduledStart instanceof Date) || Number.isNaN(scheduledStart.getTime()) || !(scheduledEnd instanceof Date) || Number.isNaN(scheduledEnd.getTime()) || scheduledEnd <= scheduledStart) {
+    throw new ValidationError('A janela temporal da reserva é inválida.', 'RESERVATION_TIME_INVALID');
+  }
+  const overlap = await EquipmentReservation.findOne({ where: { tenantId, assetId: payload.assetId, status: { [Op.in]: ['PENDING', 'CONFIRMED'] }, scheduledStart: { [Op.lt]: scheduledEnd }, scheduledEnd: { [Op.gt]: scheduledStart } } });
   if (overlap) throw new ConflictError('Equipamento já reservado no intervalo informado', 'ASSET_RESERVATION_CONFLICT');
   const [existing, created] = await EquipmentReservation.findOrCreate({
     where: { tenantId, idempotencyKey },
     defaults: {
       tenantId, organizationId: payload.organizationId || context.organizationId || null, contractId: payload.contractId, assetId: payload.assetId,
       agendReservationId: payload.agendReservationId || null, userId: payload.userId || context.userId || null, collectionPointId: payload.collectionPointId || null,
-      scheduledStart: payload.scheduledStart, scheduledEnd: payload.scheduledEnd, status: payload.status, idempotencyKey, metadata: payload.metadata || {}, createdBy: context.userId,
+      scheduledStart, scheduledEnd, status: payload.status, idempotencyKey, metadata: payload.metadata || {}, createdBy: context.userId,
     },
   });
   if (!created) return serializeResult(existing, { idempotent: true });

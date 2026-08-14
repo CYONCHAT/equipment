@@ -31,9 +31,12 @@ const contractCreateSchema = z.object({
 
 const reservationCreateSchema = z.object({
   tenantId: uuid.optional(), organizationId: nullableUuid, contractId: uuid, assetId: uuid, agendReservationId: z.string().trim().min(1).max(160),
-  userId: nullableUuid, collectionPointId: z.string().trim().max(120).nullable().optional(), scheduledStart: date, scheduledEnd: date,
+  userId: nullableUuid, collectionPointId: z.string().trim().max(120).nullable().optional(), scheduledStart: date.optional(), scheduledEnd: date.optional(),
   status: z.enum(['PENDING', 'CONFIRMED']).default('CONFIRMED'), metadata: z.record(z.any()).optional(),
-}).strict().refine((value) => value.scheduledEnd > value.scheduledStart, { message: 'scheduledEnd deve ser posterior a scheduledStart', path: ['scheduledEnd'] });
+}).strict().refine((value) => {
+  if (!value.scheduledStart && !value.scheduledEnd) return true;
+  return value.scheduledStart && value.scheduledEnd && value.scheduledEnd > value.scheduledStart;
+}, { message: 'scheduledStart e scheduledEnd devem ser informados juntos e scheduledEnd deve ser posterior a scheduledStart', path: ['scheduledEnd'] });
 
 const checkInSchema = z.object({
   tenantId: uuid.optional(), organizationId: nullableUuid, contractId: uuid, reservationId: nullableUuid, serialNumber: z.string().trim().min(1).max(120),
