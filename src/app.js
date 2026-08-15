@@ -1,4 +1,6 @@
 const express = require('express');
+const { collectMetrics } = require('./middlewares/observabilityMetrics');
+const observabilityMetricsController = require('./controllers/observabilityMetricsController');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -12,6 +14,8 @@ const { communicationContext } = require('./middlewares/communicationContext');
 
 const app = express();
 app.use(communicationContext);
+app.use(collectMetrics);
+app.get('/metrics', observabilityMetricsController.metrics);
 app.disable('x-powered-by');
 app.set('trust proxy', env.trustProxyHops);
 app.use(requestContext);
