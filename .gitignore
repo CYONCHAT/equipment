@@ -5,3 +5,9 @@ coverage/
 .env.*.local
 .DS_Store
 *.log
+
+# Environment files (never commit)
+.env
+.env.*
+!.env.example
+!.env.template
